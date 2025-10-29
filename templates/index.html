@@ -1,0 +1,2081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudVoter - Automated Voting System</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .log-entry {
+            padding: 0.5rem;
+            border-bottom: 1px solid #e5e7eb;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+        
+        .log-entry:hover {
+            background-color: #f9fafb;
+        }
+        
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            font-weight: 500;
+            color: #6b7280;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .tab-btn:hover {
+            color: #111827;
+        }
+        
+        .tab-btn.active {
+            color: #2563eb;
+            border-bottom-color: #2563eb;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .session-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .session-card:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">CloudVoter</h1>
+                            <p class="text-sm text-gray-500">Automated Voting System</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div id="connection-status" class="flex items-center space-x-2">
+                            <div class="w-2 h-2 bg-gray-400 rounded-full"></div>
+                            <span class="text-sm text-gray-600">Connecting...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Tab Navigation -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+                <nav class="flex border-b border-gray-200">
+                    <button class="tab-btn active" onclick="switchTab('dashboard')">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            </svg>
+                            <span>Dashboard</span>
+                        </span>
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('sessions')">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                            </svg>
+                            <span>Sessions</span>
+                        </span>
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('browsers')">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                            </svg>
+                            <span>Opened Browsers</span>
+                        </span>
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('login-required')">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                            </svg>
+                            <span>Login Required</span>
+                        </span>
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('hourly-analytics')">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            </svg>
+                            <span>Hourly Analytics</span>
+                        </span>
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('hourly-limit')">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span>Hourly Limit</span>
+                        </span>
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('statistics')">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                            <span>Statistics</span>
+                        </span>
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('logs')">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            <span>Logs</span>
+                        </span>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Dashboard Tab -->
+            <div id="dashboard-tab" class="tab-content active">
+            <!-- Control Panel -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-semibold text-gray-900">Control Panel</h2>
+                    <button id="restart-btn" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span>Restart System</span>
+                    </button>
+                </div>
+
+                <!-- Configuration -->
+                <div class="grid grid-cols-1 gap-4 mb-4">
+                    <!-- Voting URL Section -->
+                    <div class="bg-white p-4 rounded-lg border border-gray-200">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Voting URL</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="voting-url" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="https://www.cutebabyvote.com/...">
+                            <button id="save-url-btn" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium whitespace-nowrap">
+                                💾 Save URL
+                            </button>
+                        </div>
+                        <p id="url-save-status" class="text-sm mt-2 hidden"></p>
+                    </div>
+                    
+                    <!-- Bright Data Credentials Section -->
+                    <div class="bg-white p-4 rounded-lg border border-gray-200">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Bright Data Credentials</label>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Username</label>
+                                <input type="text" id="username" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="username">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Password</label>
+                                <input type="password" id="password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="password">
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="save-credentials-btn" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium">
+                                💾 Save Credentials
+                            </button>
+                            <p id="credentials-save-status" class="text-sm my-auto hidden"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Total Attempts</p>
+                            <p id="stat-total" class="text-2xl font-bold text-gray-900 mt-1">0</p>
+                        </div>
+                        <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Successful Votes</p>
+                            <p id="stat-success" class="text-2xl font-bold text-green-600 mt-1">0</p>
+                        </div>
+                        <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Failed Votes</p>
+                            <p id="stat-failed" class="text-2xl font-bold text-red-600 mt-1">0</p>
+                        </div>
+                        <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-600">Active Instances</p>
+                            <p id="stat-active" class="text-2xl font-bold text-purple-600 mt-1">0</p>
+                        </div>
+                        <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instances and Logs -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Active Instances -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-900">Active Instances</h3>
+                    </div>
+                    <div id="instances-container" class="p-4 max-h-96 overflow-y-auto">
+                        <p class="text-sm text-gray-500 text-center py-8">No active instances</p>
+                    </div>
+                </div>
+
+                <!-- Live Logs -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-900">Live Logs</h3>
+                        <button id="clear-logs" class="text-sm text-gray-600 hover:text-gray-900">Clear</button>
+                    </div>
+                    <div id="logs-container" class="max-h-96 overflow-y-auto">
+                        <p class="text-sm text-gray-500 text-center py-8">No logs yet</p>
+                    </div>
+                </div>
+            </div>
+            </div>
+            <!-- End Dashboard Tab -->
+
+            <!-- Sessions Tab -->
+            <div id="sessions-tab" class="tab-content">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-semibold text-gray-900">Saved Sessions</h2>
+                        <span id="sessions-count" class="text-sm text-gray-600">Loading...</span>
+                    </div>
+                    <div id="sessions-list" class="space-y-4">
+                        <p class="text-center text-gray-500 py-8">Loading sessions...</p>
+                    </div>
+                </div>
+            </div>
+            <!-- End Sessions Tab -->
+
+            <!-- Opened Browsers Tab -->
+            <div id="browsers-tab" class="tab-content">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 class="text-xl font-semibold text-gray-900">Opened Browsers</h2>
+                            <p class="text-sm text-gray-500 mt-1">Real-time tracking of headless browser instances</p>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <span id="browsers-count" class="text-sm font-medium text-gray-600">
+                                <span class="text-2xl font-bold text-blue-600" id="open-browsers-count">0</span> browsers open
+                            </span>
+                        </div>
+                    </div>
+                    <div id="browsers-list" class="space-y-3">
+                        <p class="text-center text-gray-500 py-8">No browsers currently open</p>
+                    </div>
+                </div>
+            </div>
+            <!-- End Opened Browsers Tab -->
+
+            <!-- Login Required Tab -->
+            <div id="login-required-tab" class="tab-content">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 class="text-xl font-semibold text-gray-900">Login Required Instances</h2>
+                            <p class="text-sm text-gray-500 mt-1">Instances that need Google login (excluded from voting cycles)</p>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <span id="login-required-count" class="text-sm font-medium text-gray-600">
+                                <span class="text-2xl font-bold text-red-600" id="login-required-instances-count">0</span> instances
+                            </span>
+                        </div>
+                    </div>
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                        <div class="flex items-start space-x-3">
+                            <svg class="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                            </svg>
+                            <div class="flex-1">
+                                <h3 class="text-sm font-medium text-yellow-800">⚠️ Manual Login Required</h3>
+                                <p class="text-sm text-yellow-700 mt-1">These instances detected "Login with Google" button and have been excluded from voting cycles. Restart the script to re-enable them after logging in manually.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="login-required-list" class="space-y-3">
+                        <p class="text-center text-gray-500 py-8">No instances require login</p>
+                    </div>
+                </div>
+            </div>
+            <!-- End Login Required Tab -->
+
+            <!-- Hourly Analytics Tab -->
+            <div id="hourly-analytics-tab" class="tab-content">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-900">Hourly Voting Analytics</h3>
+                        <p class="text-sm text-gray-600 mt-1">Track votes per hour and hourly limit occurrences</p>
+                    </div>
+                    
+                    <!-- Filters and Controls -->
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Date Filter</label>
+                                <select id="analytics-date-filter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="today">Today</option>
+                                    <option value="yesterday">Yesterday</option>
+                                    <option value="last7days">Last 7 Days</option>
+                                    <option value="last30days">Last 30 Days</option>
+                                    <option value="all">All Time</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+                                <select id="analytics-sort" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="hour-desc">Hour (Newest First)</option>
+                                    <option value="hour-asc">Hour (Oldest First)</option>
+                                    <option value="votes-desc">Votes (High to Low)</option>
+                                    <option value="votes-asc">Votes (Low to High)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Show</label>
+                                <select id="analytics-filter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="all">All Hours</option>
+                                    <option value="with-limit">Hours with Limit</option>
+                                    <option value="without-limit">Hours without Limit</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button onclick="loadHourlyAnalytics()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
+                                    Refresh Data
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analytics Content -->
+                    <div class="p-6">
+                        <div id="hourly-analytics-content" class="space-y-4">
+                            <div class="text-center py-12 text-gray-500">
+                                <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                                </svg>
+                                <p>Click "Refresh Data" to load hourly analytics</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- End Hourly Analytics Tab -->
+
+            <!-- Hourly Limit Tab -->
+            <div id="hourly-limit-tab" class="tab-content">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+                    <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                        <div>
+                            <h2 class="text-xl font-semibold text-gray-800">Hourly Limit Detections</h2>
+                            <p class="text-sm text-gray-600 mt-1">Track when hourly limits are detected and vote counts</p>
+                        </div>
+                        <button onclick="loadHourlyLimitLogs()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            <span>Refresh Data</span>
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        <!-- Info Banner -->
+                        <div class="mb-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                            <div class="flex items-start">
+                                <svg class="w-5 h-5 text-blue-500 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                </svg>
+                                <div>
+                                    <p class="text-sm text-blue-800 font-medium">What is this tab?</p>
+                                    <p class="text-sm text-blue-700 mt-1">This tab shows every time an hourly limit is detected, along with the vote count at that moment. Use this to verify your voting system is working correctly and hitting limits as expected.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Table -->
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Detection Time</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Instance</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vote Count</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proxy IP</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="hourly-limit-table-body" class="bg-white divide-y divide-gray-200">
+                                    <tr>
+                                        <td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                                            <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                            </svg>
+                                            <p>Click "Refresh Data" to load hourly limit logs</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- End Hourly Limit Tab -->
+
+            <!-- Statistics Tab -->
+            <div id="statistics-tab" class="tab-content">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-xl font-semibold text-gray-900">Voting Statistics</h2>
+                            <button id="refresh-statistics-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                                <span>Refresh Statistics</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Filters -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Instance</label>
+                                <select id="stats-instance-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                    <option value="all">All Instances</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Date & Hour</label>
+                                <select id="stats-hour-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                    <option value="all">All Time</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Statistics Display -->
+                    <div id="statistics-content" class="px-6 py-4">
+                        <div class="text-center text-gray-500 py-8">
+                            <p>Click "Refresh Statistics" to load data</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- End Statistics Tab -->
+
+            <!-- Logs Tab -->
+            <div id="logs-tab" class="tab-content">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">All Logs</h3>
+                            <p class="text-xs text-gray-500 mt-1">Showing last 1000 log entries</p>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button id="download-logs" class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
+                                Download
+                            </button>
+                            <button id="clear-all-logs" class="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded">
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div id="all-logs-container" class="max-h-screen overflow-y-auto p-4">
+                        <p class="text-sm text-gray-500 text-center py-8">No logs yet</p>
+                    </div>
+                </div>
+            </div>
+            <!-- End Logs Tab -->
+        </main>
+    </div>
+
+    <!-- Save Login Modal -->
+    <div id="save-login-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Save Google Login</h3>
+            <p class="text-sm text-gray-600 mb-4">
+                A browser window will open. Please:
+            </p>
+            <ol class="list-decimal list-inside text-sm text-gray-600 space-y-2 mb-6">
+                <li>Log into your Google account</li>
+                <li>Complete any 2FA verification</li>
+                <li>Click "Done" below when finished</li>
+            </ol>
+            <div class="flex space-x-3">
+                <button id="cancel-login-btn" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button id="complete-login-btn" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    Done - Save Session
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_URL = window.location.origin;
+        let socket = null;
+        let monitoringActive = false;
+
+        // DOM Elements
+        const restartBtn = document.getElementById('restart-btn');
+        const votingUrlInput = document.getElementById('voting-url');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const connectionStatus = document.getElementById('connection-status');
+        const logsContainer = document.getElementById('logs-container');
+        const instancesContainer = document.getElementById('instances-container');
+        const clearLogsBtn = document.getElementById('clear-logs');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            restoreLogs();  // Restore logs from localStorage
+            initializeSocket();
+            loadConfiguration();
+            setupEventListeners();
+            // Monitoring starts automatically on server startup
+            monitoringActive = true;
+            startPolling();
+        });
+
+        // Socket.IO Connection
+        function initializeSocket() {
+            socket = io(API_URL);
+
+            socket.on('connect', () => {
+                updateConnectionStatus(true);
+                addLog('🔌 Connected to CloudVoter server');
+            });
+
+            socket.on('disconnect', () => {
+                updateConnectionStatus(false);
+                addLog('⚠️ Disconnected from server');
+            });
+
+            socket.on('log', (data) => {
+                addLog(data.message);
+            });
+
+            socket.on('log_update', (data) => {
+                addLog(data.message);
+            });
+
+            socket.on('status_update', (data) => {
+                monitoringActive = data.monitoring_active;
+            });
+            
+            socket.on('statistics_update', (data) => {
+                // Update statistics in real-time via Socket.IO
+                console.log('[STATS] Socket.IO update received:', data);
+                document.getElementById('stat-total').textContent = data.total_attempts || 0;
+                document.getElementById('stat-success').textContent = data.successful_votes || 0;
+                document.getElementById('stat-failed').textContent = data.failed_votes || 0;
+                document.getElementById('stat-active').textContent = data.active_instances || 0;
+            });
+            
+            socket.on('instances_update', (data) => {
+                // Update instances in real-time via Socket.IO
+                if (data.instances && data.instances.length > 0) {
+                    renderInstances(data.instances);
+                } else {
+                    instancesContainer.innerHTML = '<p class="text-sm text-gray-500 text-center py-8">No active instances</p>';
+                }
+            });
+        }
+
+        // Update connection status
+        function updateConnectionStatus(connected) {
+            const statusDot = connectionStatus.querySelector('div');
+            const statusText = connectionStatus.querySelector('span');
+            
+            if (connected) {
+                statusDot.className = 'w-2 h-2 bg-green-500 rounded-full pulse';
+                statusText.textContent = 'Connected';
+                statusText.className = 'text-sm text-green-600';
+            } else {
+                statusDot.className = 'w-2 h-2 bg-red-500 rounded-full';
+                statusText.textContent = 'Disconnected';
+                statusText.className = 'text-sm text-red-600';
+            }
+        }
+
+        // Load configuration
+        async function loadConfiguration() {
+            try {
+                const response = await fetch(`${API_URL}/api/config`);
+                const data = await response.json();
+                
+                votingUrlInput.value = data.voting_url || '';
+                usernameInput.value = data.bright_data_username || '';
+                passwordInput.value = data.bright_data_password || '';
+                
+                addLog('✅ Configuration loaded successfully');
+            } catch (error) {
+                console.error('Error loading config:', error);
+                addLog('⚠️ Could not load configuration');
+            }
+        }
+
+        // Save Voting URL
+        async function saveVotingUrl() {
+            const urlInput = document.getElementById('voting-url');
+            const statusElement = document.getElementById('url-save-status');
+            const saveBtn = document.getElementById('save-url-btn');
+            
+            const votingUrl = urlInput.value.trim();
+            
+            if (!votingUrl) {
+                showStatus(statusElement, '⚠️ Please enter a voting URL', 'text-orange-600');
+                return;
+            }
+            
+            // Basic URL validation
+            try {
+                new URL(votingUrl);
+            } catch (e) {
+                showStatus(statusElement, '❌ Invalid URL format', 'text-red-600');
+                return;
+            }
+            
+            // Disable button during save
+            saveBtn.disabled = true;
+            saveBtn.textContent = '💾 Saving...';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/config`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        voting_url: votingUrl
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showStatus(statusElement, '✅ Voting URL saved successfully!', 'text-green-600');
+                    addLog(`💾 Voting URL saved: ${votingUrl}`);
+                } else {
+                    showStatus(statusElement, `❌ ${data.message}`, 'text-red-600');
+                }
+            } catch (error) {
+                console.error('Error saving voting URL:', error);
+                showStatus(statusElement, '❌ Failed to save voting URL', 'text-red-600');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = '💾 Save URL';
+            }
+        }
+
+        // Save Bright Data Credentials
+        async function saveCredentials() {
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const statusElement = document.getElementById('credentials-save-status');
+            const saveBtn = document.getElementById('save-credentials-btn');
+            
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+            
+            if (!username || !password) {
+                showStatus(statusElement, '⚠️ Please enter both username and password', 'text-orange-600');
+                return;
+            }
+            
+            // Disable button during save
+            saveBtn.disabled = true;
+            saveBtn.textContent = '💾 Saving...';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/config`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        bright_data_username: username,
+                        bright_data_password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showStatus(statusElement, '✅ Credentials saved successfully!', 'text-green-600');
+                    addLog('💾 Bright Data credentials saved');
+                } else {
+                    showStatus(statusElement, `❌ ${data.message}`, 'text-red-600');
+                }
+            } catch (error) {
+                console.error('Error saving credentials:', error);
+                showStatus(statusElement, '❌ Failed to save credentials', 'text-red-600');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = '💾 Save Credentials';
+            }
+        }
+
+        // Helper function to show status messages
+        function showStatus(element, message, className) {
+            element.textContent = message;
+            element.className = `text-sm mt-2 ${className}`;
+            element.classList.remove('hidden');
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                element.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            restartBtn.addEventListener('click', restartSystem);
+            clearLogsBtn.addEventListener('click', clearLogs);
+            
+            // Logs buttons
+            document.getElementById('download-logs').addEventListener('click', downloadLogs);
+            document.getElementById('clear-all-logs').addEventListener('click', clearLogs);
+            
+            // Save buttons
+            document.getElementById('save-url-btn').addEventListener('click', saveVotingUrl);
+            document.getElementById('save-credentials-btn').addEventListener('click', saveCredentials);
+            
+            // Optional: Save on Enter key
+            votingUrlInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') saveVotingUrl();
+            });
+            usernameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') saveCredentials();
+            });
+            passwordInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') saveCredentials();
+            });
+        }
+
+        // Restart system
+        async function restartSystem() {
+            if (!confirm('Are you sure you want to restart the system? This will close all browsers and restart monitoring.')) {
+                return;
+            }
+            
+            try {
+                // Disable button during restart
+                restartBtn.disabled = true;
+                restartBtn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Restarting...</span>';
+                
+                addLog('🔄 Restarting system...');
+                
+                const response = await fetch(`${API_URL}/api/restart`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    monitoringActive = true;
+                    addLog('✅ System restarted successfully');
+                    addLog('🚀 Monitoring active');
+                } else {
+                    addLog('❌ Restart failed: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error restarting system:', error);
+                addLog('❌ Failed to restart system: ' + error.message);
+            } finally {
+                // Re-enable button
+                restartBtn.disabled = false;
+                restartBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Restart System</span>';
+            }
+        }
+
+        // Add log entry
+        function addLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            
+            // Remove "No logs yet" placeholder if present
+            if (logsContainer.querySelector('p')) {
+                logsContainer.innerHTML = '';
+            }
+            
+            logsContainer.appendChild(logEntry);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+            
+            // Keep only last 1000 logs (increased from 100)
+            while (logsContainer.children.length > 1000) {
+                logsContainer.removeChild(logsContainer.firstChild);
+            }
+            
+            // Save logs to localStorage (with error handling for quota)
+            saveLogs();
+        }
+        
+        // Save logs to localStorage
+        function saveLogs() {
+            try {
+                const logs = [];
+                logsContainer.querySelectorAll('.log-entry').forEach(entry => {
+                    logs.push(entry.textContent);
+                });
+                localStorage.setItem('cloudvoter_logs', JSON.stringify(logs));
+            } catch (error) {
+                // Handle quota exceeded error
+                if (error.name === 'QuotaExceededError' || error.code === 22) {
+                    console.warn('LocalStorage quota exceeded, keeping only last 500 logs');
+                    // Keep only last 500 logs to reduce size
+                    const logs = [];
+                    const entries = logsContainer.querySelectorAll('.log-entry');
+                    const startIndex = Math.max(0, entries.length - 500);
+                    for (let i = startIndex; i < entries.length; i++) {
+                        logs.push(entries[i].textContent);
+                    }
+                    try {
+                        localStorage.setItem('cloudvoter_logs', JSON.stringify(logs));
+                    } catch (e) {
+                        console.error('Still cannot save logs:', e);
+                    }
+                } else {
+                    console.error('Error saving logs:', error);
+                }
+            }
+        }
+        
+        // Restore logs from server (fetches from cloudvoter.log file)
+        async function restoreLogs() {
+            try {
+                console.log('[LOGS] Fetching logs from server...');
+                
+                // Fetch logs from server API
+                const response = await fetch(`${API_URL}/api/logs?lines=1000`);
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.logs && data.logs.length > 0) {
+                    console.log(`[LOGS] Loaded ${data.logs.length} logs from server`);
+                    
+                    // Clear container
+                    logsContainer.innerHTML = '';
+                    
+                    // Add each log entry
+                    data.logs.forEach(log => {
+                        const logEntry = document.createElement('div');
+                        logEntry.className = 'log-entry';
+                        // Use timestamp if available, otherwise use full log line
+                        if (log.timestamp) {
+                            logEntry.textContent = `[${log.timestamp}] ${log.message}`;
+                        } else {
+                            logEntry.textContent = log.message;
+                        }
+                        logsContainer.appendChild(logEntry);
+                    });
+                    
+                    // Scroll to bottom
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                    
+                    // Save to localStorage for offline access
+                    saveLogs();
+                } else {
+                    console.log('[LOGS] No logs found on server, trying localStorage...');
+                    
+                    // Fallback to localStorage if server has no logs
+                    const savedLogs = localStorage.getItem('cloudvoter_logs');
+                    if (savedLogs) {
+                        const logs = JSON.parse(savedLogs);
+                        if (logs.length > 0) {
+                            logsContainer.innerHTML = '';
+                            logs.forEach(logText => {
+                                const logEntry = document.createElement('div');
+                                logEntry.className = 'log-entry';
+                                logEntry.textContent = logText;
+                                logsContainer.appendChild(logEntry);
+                            });
+                            logsContainer.scrollTop = logsContainer.scrollHeight;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('[LOGS] Error fetching logs from server:', error);
+                
+                // Fallback to localStorage on error
+                try {
+                    const savedLogs = localStorage.getItem('cloudvoter_logs');
+                    if (savedLogs) {
+                        const logs = JSON.parse(savedLogs);
+                        if (logs.length > 0) {
+                            logsContainer.innerHTML = '';
+                            logs.forEach(logText => {
+                                const logEntry = document.createElement('div');
+                                logEntry.className = 'log-entry';
+                                logEntry.textContent = logText;
+                                logsContainer.appendChild(logEntry);
+                            });
+                            logsContainer.scrollTop = logsContainer.scrollHeight;
+                        }
+                    }
+                } catch (e) {
+                    console.error('[LOGS] Error restoring from localStorage:', e);
+                }
+            }
+        }
+
+        // Download logs as text file
+        function downloadLogs() {
+            const logs = [];
+            logsContainer.querySelectorAll('.log-entry').forEach(entry => {
+                logs.push(entry.textContent);
+            });
+            
+            if (logs.length === 0) {
+                alert('No logs to download');
+                return;
+            }
+            
+            const logText = logs.join('\n');
+            const blob = new Blob([logText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `cloudvoter-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // Clear logs
+        function clearLogs() {
+            if (confirm('Are you sure you want to clear all logs?')) {
+                logsContainer.innerHTML = '<p class="text-sm text-gray-500 text-center py-8">No logs yet</p>';
+                localStorage.removeItem('cloudvoter_logs');
+            }
+        }
+
+        // Update statistics
+        async function updateStatistics() {
+            try {
+                const response = await fetch(`${API_URL}/api/statistics`);
+                const data = await response.json();
+                
+                console.log('[STATS] API update received:', data);
+                document.getElementById('stat-total').textContent = data.total_attempts || 0;
+                document.getElementById('stat-success').textContent = data.successful_votes || 0;
+                document.getElementById('stat-failed').textContent = data.failed_votes || 0;
+                document.getElementById('stat-active').textContent = data.active_instances || 0;
+            } catch (error) {
+                console.error('[STATS] Error updating statistics:', error);
+            }
+        }
+
+        // Format seconds into MM:SS with retry type
+        function formatCountdown(seconds, retryType = null) {
+            if (seconds <= 0) return '✅ Ready to vote';
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            const timeStr = `${minutes}:${secs.toString().padStart(2, '0')}`;
+            
+            // Show different icons/labels based on retry type
+            if (retryType === 'technical') {
+                return `🔄 Retry in ${timeStr}`;
+            } else if (retryType === 'ip_cooldown') {
+                return `⏳ Cooldown ${timeStr}`;
+            } else {
+                return `⏳ Next vote ${timeStr}`;
+            }
+        }
+        
+        // Render instances (used by both polling and Socket.IO)
+        function renderInstances(instances) {
+            if (!instances || instances.length === 0) {
+                instancesContainer.innerHTML = '<p class="text-sm text-gray-500 text-center py-8">No active instances</p>';
+                return;
+            }
+            
+            // Sort instances by instance_id for consistent ordering
+            const sortedInstances = instances.sort((a, b) => {
+                const idA = typeof a.instance_id === 'number' ? a.instance_id : 999;
+                const idB = typeof b.instance_id === 'number' ? b.instance_id : 999;
+                return idA - idB;
+            });
+            
+            // Build new HTML
+            const newHTML = sortedInstances.map(instance => {
+                const instanceId = String(instance.instance_id);
+                const secondsRemaining = instance.seconds_remaining || 0;
+                const retryType = instance.retry_type || null;
+                const countdownText = formatCountdown(secondsRemaining, retryType);
+                
+                return `
+                <div class="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200" data-instance-id="${instanceId}" data-seconds="${secondsRemaining}" data-retry-type="${retryType || ''}">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-medium text-gray-900">Instance #${instance.instance_id}</span>
+                        <span class="status-badge ${getStatusColor(instance.status)}">
+                            ${instance.status}
+                        </span>
+                    </div>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        <div>IP: ${instance.ip || 'N/A'}</div>
+                        <div>Votes: ${instance.vote_count || 0}</div>
+                        ${instance.is_paused ? '<div class="text-orange-600">⏸️ Paused</div>' : ''}
+                        <div class="font-semibold ${secondsRemaining > 0 ? (retryType === 'technical' ? 'text-orange-600' : 'text-blue-600') : 'text-green-600'}" data-countdown="${instanceId}">
+                            ${countdownText}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+                        <div>✅ Last Success: ${formatLastVote(instance.last_successful_vote)}</div>
+                        <div>🎯 Last Attempt: ${formatLastVote(instance.last_attempted_vote)}</div>
+                    </div>
+                    ${instance.last_failure_reason ? `
+                    <div class="mt-2 pt-2 border-t border-red-200">
+                        <div class="text-xs text-red-600 font-medium">
+                            ❌ Last Failure: ${instance.last_failure_reason}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                `;
+            }).join('');
+            
+            // Only update if content changed to avoid flickering
+            const currentHTML = instancesContainer.innerHTML.trim();
+            const newHTMLTrimmed = newHTML.trim();
+            if (currentHTML !== newHTMLTrimmed) {
+                instancesContainer.innerHTML = newHTML;
+                console.log(`[UI] Updated ${sortedInstances.length} instance cards`);
+            }
+        }
+        
+        // Update instances via polling (fallback)
+        async function updateInstances() {
+            try {
+                const response = await fetch(`${API_URL}/api/instances`);
+                const data = await response.json();
+                
+                console.log(`[POLL] Fetched ${data.instances?.length || 0} instances`);
+                renderInstances(data.instances);
+            } catch (error) {
+                console.error('Error updating instances:', error);
+            }
+        }
+
+        // Get status color
+        function getStatusColor(status) {
+            if (status.includes('Success') || status.includes('✅')) return 'bg-green-100 text-green-800';
+            if (status.includes('Error') || status.includes('❌')) return 'bg-red-100 text-red-800';
+            if (status.includes('Cooldown') || status.includes('⏳')) return 'bg-blue-100 text-blue-800';
+            if (status.includes('Login') || status.includes('🔑')) return 'bg-yellow-100 text-yellow-800';
+            return 'bg-gray-100 text-gray-800';
+        }
+
+        // Update countdown timers every second
+        function updateCountdowns() {
+            const instanceCards = document.querySelectorAll('[data-instance-id]');
+            instanceCards.forEach(card => {
+                const instanceId = card.getAttribute('data-instance-id');
+                const countdownElement = card.querySelector(`[data-countdown="${instanceId}"]`);
+                
+                if (countdownElement) {
+                    let seconds = parseInt(card.getAttribute('data-seconds') || '0');
+                    const retryType = card.getAttribute('data-retry-type') || null;
+                    
+                    if (seconds > 0) {
+                        seconds--;
+                        card.setAttribute('data-seconds', seconds);
+                        countdownElement.textContent = formatCountdown(seconds, retryType);
+                        
+                        // Update color based on retry type and remaining time
+                        if (seconds > 0) {
+                            if (retryType === 'technical') {
+                                countdownElement.className = 'font-semibold text-orange-600';
+                            } else {
+                                countdownElement.className = 'font-semibold text-blue-600';
+                            }
+                        } else {
+                            countdownElement.className = 'font-semibold text-green-600';
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Start polling
+        function startPolling() {
+            updateStatistics();
+            updateInstances();
+            
+            setInterval(updateStatistics, 5000);
+            setInterval(updateInstances, 5000);
+            setInterval(updateCountdowns, 1000);  // Update countdown every second
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // Add active class to clicked button
+            event.target.closest('.tab-btn').classList.add('active');
+            
+            // Load sessions if sessions tab
+            if (tabName === 'sessions') {
+                loadSessions();
+            }
+            
+            // Load browsers if browsers tab
+            if (tabName === 'browsers') {
+                loadBrowsers();
+            }
+            
+            // Load login required instances if login-required tab
+            if (tabName === 'login-required') {
+                loadLoginRequiredInstances();
+            }
+        }
+
+        // Load sessions
+        async function loadSessions() {
+            try {
+                const response = await fetch(`${API_URL}/api/sessions`);
+                const data = await response.json();
+                
+                const sessionsList = document.getElementById('sessions-list');
+                const sessionsCount = document.getElementById('sessions-count');
+                
+                if (data.sessions && data.sessions.length > 0) {
+                    sessionsCount.textContent = `${data.sessions.length} sessions`;
+                    
+                    sessionsList.innerHTML = data.sessions.map(session => `
+                        <div class="session-card">
+                            <div class="flex items-center justify-between mb-3">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900">Instance #${session.instance_id}</h3>
+                                    <p class="text-sm text-gray-600">IP: ${session.ip}</p>
+                                </div>
+                                <span class="status-badge ${getSessionStatusColor(session.status)}">
+                                    ${getSessionStatusText(session.status)}
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-sm text-gray-600 mb-3">
+                                <div>✅ Last Success: ${formatLastVote(session.last_successful_vote)}</div>
+                                <div>🎯 Last Attempt: ${formatLastVote(session.last_attempted_vote)}</div>
+                            </div>
+                            <div class="text-sm text-gray-600 mb-3">
+                                <div>📊 Total Votes: ${session.vote_count}</div>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button onclick="launchInstance(${session.instance_id})" 
+                                    class="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors">
+                                    🚀 Launch
+                                </button>
+                                <button onclick="checkLogin(${session.instance_id})" 
+                                    class="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors">
+                                    🔍 Check Login
+                                </button>
+                                <button onclick="saveLogin(${session.instance_id})" 
+                                    class="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors">
+                                    💾 Save Login
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    sessionsCount.textContent = '0 sessions';
+                    sessionsList.innerHTML = '<p class="text-center text-gray-500 py-8">No saved sessions found</p>';
+                }
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+                addLog('❌ Failed to load sessions');
+            }
+        }
+
+        // Launch instance
+        async function launchInstance(instanceId) {
+            try {
+                addLog(`🚀 Launching instance #${instanceId}...`);
+                
+                const response = await fetch(`${API_URL}/api/launch-instance/${instanceId}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    addLog(`✅ ${data.message}`);
+                    alert(data.message);
+                } else {
+                    addLog(`⚠️ ${data.message}`);
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Error launching instance:', error);
+                addLog(`❌ Failed to launch instance #${instanceId}`);
+                alert('Failed to launch instance');
+            }
+        }
+
+        // Check login
+        let checkingLogin = {};
+        async function checkLogin(instanceId) {
+            if (checkingLogin[instanceId]) {
+                alert('Already checking login for this instance');
+                return;
+            }
+            
+            try {
+                checkingLogin[instanceId] = true;
+                addLog(`🔍 Checking login for instance #${instanceId}...`);
+                
+                const response = await fetch(`${API_URL}/api/check-login/${instanceId}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    if (data.logged_in) {
+                        addLog(`✅ Instance #${instanceId}: ${data.message}`);
+                        alert(`✅ Instance #${instanceId} is logged in!`);
+                    } else {
+                        addLog(`⚠️ Instance #${instanceId}: ${data.message}`);
+                        alert(`⚠️ Instance #${instanceId} requires re-login`);
+                    }
+                    loadSessions(); // Refresh sessions list
+                } else {
+                    addLog(`❌ ${data.message}`);
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Error checking login:', error);
+                addLog(`❌ Failed to check login for instance #${instanceId}`);
+                alert('Failed to check login');
+            } finally {
+                checkingLogin[instanceId] = false;
+            }
+        }
+
+        // Save login
+        let currentLoginInstance = null;
+        async function saveLogin(instanceId) {
+            try {
+                currentLoginInstance = instanceId;
+                addLog(`💾 Opening browser for instance #${instanceId}...`);
+                
+                const response = await fetch(`${API_URL}/api/save-login/${instanceId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await response.json();
+                
+                if (data.status === 'browser_opened') {
+                    addLog(`✅ Browser opened for instance #${instanceId} - Please complete Google login`);
+                    showSaveLoginModal();
+                } else {
+                    addLog(`❌ ${data.message}`);
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Error opening login browser:', error);
+                addLog(`❌ Failed to open browser for instance #${instanceId}`);
+                alert('Failed to open browser');
+            }
+        }
+
+        // Show save login modal
+        function showSaveLoginModal() {
+            const modal = document.getElementById('save-login-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        // Hide save login modal
+        function hideSaveLoginModal() {
+            const modal = document.getElementById('save-login-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // Complete login
+        async function completeLogin() {
+            if (!currentLoginInstance) {
+                alert('No active login session');
+                return;
+            }
+            
+            try {
+                addLog(`💾 Saving session for instance #${currentLoginInstance}...`);
+                
+                const response = await fetch(`${API_URL}/api/save-login/${currentLoginInstance}/complete`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    addLog(`✅ ${data.message}`);
+                    alert(data.message);
+                    hideSaveLoginModal();
+                    loadSessions(); // Refresh sessions list
+                    currentLoginInstance = null;
+                } else {
+                    addLog(`❌ ${data.message}`);
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Error completing login:', error);
+                addLog(`❌ Failed to save session`);
+                alert('Failed to save session');
+            }
+        }
+
+        // Helper functions
+        function getSessionStatusColor(status) {
+            if (status === 'saved') return 'bg-green-100 text-green-800';
+            if (status === 'needs_login') return 'bg-yellow-100 text-yellow-800';
+            return 'bg-gray-100 text-gray-800';
+        }
+
+        function getSessionStatusText(status) {
+            if (status === 'saved') return '✅ Saved';
+            if (status === 'needs_login') return '⚠️ Needs Login';
+            return '❓ Unknown';
+        }
+
+        function formatLastVote(lastVote) {
+            if (!lastVote || lastVote === 'Never') return 'Never';
+            try {
+                const date = new Date(lastVote);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMins / 60);
+                
+                if (diffMins < 60) return `${diffMins} min ago`;
+                if (diffHours < 24) return `${diffHours} hours ago`;
+                return `${Math.floor(diffHours / 24)} days ago`;
+            } catch {
+                return lastVote;
+            }
+        }
+
+        // Load browsers
+        async function loadBrowsers() {
+            try {
+                const response = await fetch(`${API_URL}/api/browsers`);
+                const data = await response.json();
+                
+                const browsersList = document.getElementById('browsers-list');
+                const browsersCount = document.getElementById('open-browsers-count');
+                
+                if (data.browsers && data.browsers.length > 0) {
+                    browsersCount.textContent = data.browsers.length;
+                    
+                    browsersList.innerHTML = data.browsers.map(browser => `
+                        <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow" data-browser-id="${browser.browser_id}">
+                            <div class="flex items-center justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center space-x-3 mb-2">
+                                        <h3 class="text-lg font-semibold text-gray-900">Instance #${browser.instance_id}</h3>
+                                        <span class="status-badge ${browser.browser_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                                            ${browser.browser_active ? '🟢 Active' : '⚫ Inactive'}
+                                        </span>
+                                        <span class="text-xs text-gray-500 font-mono">
+                                            Session: ${browser.browser_session_id}
+                                        </span>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2 text-sm text-gray-600">
+                                        <div>
+                                            <span class="font-medium">IP:</span> ${browser.ip || 'N/A'}
+                                        </div>
+                                        <div>
+                                            <span class="font-medium">Status:</span> ${browser.status || 'Unknown'}
+                                        </div>
+                                        <div>
+                                            <span class="font-medium">Votes:</span> ${browser.vote_count || 0}
+                                        </div>
+                                        <div>
+                                            <span class="font-medium">Browser Open:</span> ${browser.browser_open_duration || '0s'}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="ml-4">
+                                    <button 
+                                        onclick="forceCloseBrowser(${browser.instance_id})" 
+                                        class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors flex items-center space-x-2"
+                                        ${!browser.browser_active ? 'disabled' : ''}
+                                    >
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                        <span>Force Close</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    browsersCount.textContent = '0';
+                    browsersList.innerHTML = '<p class="text-center text-gray-500 py-8">No browsers currently open</p>';
+                }
+            } catch (error) {
+                console.error('Error loading browsers:', error);
+                document.getElementById('browsers-list').innerHTML = '<p class="text-center text-red-500 py-8">Failed to load browsers</p>';
+            }
+        }
+
+        // Force close browser
+        async function forceCloseBrowser(instanceId) {
+            if (!confirm(`Are you sure you want to force close browser for Instance #${instanceId}?`)) {
+                return;
+            }
+            
+            try {
+                addLog(`🔴 Force closing browser for instance #${instanceId}...`);
+                
+                const response = await fetch(`${API_URL}/api/force-close-browser/${instanceId}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    addLog(`✅ ${data.message}`);
+                    loadBrowsers(); // Refresh browsers list
+                } else {
+                    addLog(`❌ ${data.message}`);
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error('Error force closing browser:', error);
+                addLog(`❌ Failed to force close browser for instance #${instanceId}`);
+                alert('Failed to force close browser');
+            }
+        }
+
+        // Auto-refresh browsers list when tab is active
+        setInterval(() => {
+            const browsersTab = document.getElementById('browsers-tab');
+            if (browsersTab && browsersTab.classList.contains('active')) {
+                loadBrowsers();
+            }
+        }, 3000); // Refresh every 3 seconds
+
+        // Load login required instances
+        async function loadLoginRequiredInstances() {
+            try {
+                const response = await fetch(`${API_URL}/api/login-required-instances`);
+                const data = await response.json();
+                
+                const loginRequiredList = document.getElementById('login-required-list');
+                const loginRequiredCount = document.getElementById('login-required-instances-count');
+                
+                if (data.instances && data.instances.length > 0) {
+                    loginRequiredCount.textContent = data.instances.length;
+                    
+                    loginRequiredList.innerHTML = data.instances.map(instance => `
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center space-x-3 mb-2">
+                                        <h3 class="text-lg font-semibold text-gray-900">Instance #${instance.instance_id}</h3>
+                                        <span class="status-badge bg-red-100 text-red-800">
+                                            🔒 Login Required
+                                        </span>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2 text-sm text-gray-600 mb-3">
+                                        <div>
+                                            <span class="font-medium">IP:</span> ${instance.ip || 'N/A'}
+                                        </div>
+                                        <div>
+                                            <span class="font-medium">Status:</span> ${instance.status || 'Unknown'}
+                                        </div>
+                                        <div>
+                                            <span class="font-medium">Votes:</span> ${instance.vote_count || 0}
+                                        </div>
+                                        <div>
+                                            <span class="font-medium">Detected:</span> ${instance.login_detected_time || 'Unknown'}
+                                        </div>
+                                    </div>
+                                    <div class="bg-white border border-red-200 rounded p-2 text-sm">
+                                        <span class="font-medium text-red-700">Reason:</span>
+                                        <span class="text-gray-700">${instance.login_detection_reason || 'Login with Google button detected'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    loginRequiredCount.textContent = '0';
+                    loginRequiredList.innerHTML = '<p class="text-center text-gray-500 py-8">No instances require login</p>';
+                }
+            } catch (error) {
+                console.error('Error loading login required instances:', error);
+                document.getElementById('login-required-list').innerHTML = '<p class="text-center text-red-500 py-8">Failed to load login required instances</p>';
+            }
+        }
+
+        // Auto-refresh login required list when tab is active
+        setInterval(() => {
+            const loginRequiredTab = document.getElementById('login-required-tab');
+            if (loginRequiredTab && loginRequiredTab.classList.contains('active')) {
+                loadLoginRequiredInstances();
+            }
+        }, 5000); // Refresh every 5 seconds
+
+        // Load hourly analytics
+        async function loadHourlyAnalytics() {
+            try {
+                const response = await fetch(`${API_URL}/api/hourly-analytics`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    renderHourlyAnalytics(data.analytics);
+                } else {
+                    document.getElementById('hourly-analytics-content').innerHTML = `
+                        <div class="text-center py-12 text-red-500">
+                            <p>Error loading analytics: ${data.message || 'Unknown error'}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading hourly analytics:', error);
+                document.getElementById('hourly-analytics-content').innerHTML = `
+                    <div class="text-center py-12 text-red-500">
+                        <p>Failed to load hourly analytics</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Render hourly analytics with filters and sorting
+        function renderHourlyAnalytics(analytics) {
+            const dateFilter = document.getElementById('analytics-date-filter').value;
+            const sortBy = document.getElementById('analytics-sort').value;
+            const filterType = document.getElementById('analytics-filter').value;
+            
+            // Apply date filter
+            let filtered = analytics.filter(item => {
+                const itemDate = new Date(item.hour);
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                
+                switch(dateFilter) {
+                    case 'today':
+                        return itemDate >= today;
+                    case 'yesterday':
+                        return itemDate >= yesterday && itemDate < today;
+                    case 'last7days':
+                        const last7days = new Date(today);
+                        last7days.setDate(last7days.getDate() - 7);
+                        return itemDate >= last7days;
+                    case 'last30days':
+                        const last30days = new Date(today);
+                        last30days.setDate(last30days.getDate() - 30);
+                        return itemDate >= last30days;
+                    default:
+                        return true;
+                }
+            });
+            
+            // Apply limit filter
+            if (filterType === 'with-limit') {
+                filtered = filtered.filter(item => item.hourly_limit_count > 0);
+            } else if (filterType === 'without-limit') {
+                filtered = filtered.filter(item => item.hourly_limit_count === 0);
+            }
+            
+            // Apply sorting
+            filtered.sort((a, b) => {
+                switch(sortBy) {
+                    case 'hour-desc':
+                        return new Date(b.hour) - new Date(a.hour);
+                    case 'hour-asc':
+                        return new Date(a.hour) - new Date(b.hour);
+                    case 'votes-desc':
+                        return b.successful_votes - a.successful_votes;
+                    case 'votes-asc':
+                        return a.successful_votes - b.successful_votes;
+                    default:
+                        return new Date(b.hour) - new Date(a.hour);
+                }
+            });
+            
+            const content = document.getElementById('hourly-analytics-content');
+            
+            if (filtered.length === 0) {
+                content.innerHTML = `
+                    <div class="text-center py-12 text-gray-500">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                        </svg>
+                        <p>No data available for selected filters</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = `
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hour</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Attempts</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Successful Votes</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Failed Votes</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hourly Limits</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+            `;
+            
+            filtered.forEach(item => {
+                const hourDate = new Date(item.hour);
+                const hourStr = hourDate.toLocaleString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric', 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: true 
+                });
+                
+                const successRate = item.total_attempts > 0 
+                    ? ((item.successful_votes / item.total_attempts) * 100).toFixed(1) 
+                    : 0;
+                
+                const hasLimit = item.hourly_limit_count > 0;
+                const statusBadge = hasLimit 
+                    ? `<span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Limit Reached (${item.votes_before_limit} votes)</span>`
+                    : `<span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">No Limit</span>`;
+                
+                html += `
+                    <tr class="${hasLimit ? 'bg-red-50' : ''}">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${hourStr}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${item.total_attempts}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">${item.successful_votes}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-red-600">${item.failed_votes}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm ${hasLimit ? 'text-red-600 font-semibold' : 'text-gray-500'}">${item.hourly_limit_count}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${successRate}%</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">${statusBadge}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 text-sm text-gray-600 text-center">
+                    Showing ${filtered.length} hour(s)
+                </div>
+            `;
+            
+            content.innerHTML = html;
+        }
+
+        // Auto-refresh hourly analytics when tab is active
+        setInterval(() => {
+            const analyticsTab = document.getElementById('hourly-analytics-tab');
+            if (analyticsTab && analyticsTab.classList.contains('active')) {
+                loadHourlyAnalytics();
+            }
+        }, 30000); // Refresh every 30 seconds
+
+        // Load hourly limit logs
+        async function loadHourlyLimitLogs() {
+            try {
+                const response = await fetch(`${API_URL}/api/hourly-limit-logs?limit=100`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    renderHourlyLimitLogs(data.logs);
+                } else {
+                    console.error('Error loading hourly limit logs:', data.message);
+                }
+            } catch (error) {
+                console.error('Error fetching hourly limit logs:', error);
+            }
+        }
+
+        function renderHourlyLimitLogs(logs) {
+            const tbody = document.getElementById('hourly-limit-table-body');
+            
+            if (!logs || logs.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                            <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <p>No hourly limit detections found</p>
+                            <p class="text-sm mt-2">Hourly limits will appear here when detected</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            let html = '';
+            logs.forEach(log => {
+                const detectionTime = new Date(log.timestamp);
+                const formattedTime = detectionTime.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+
+                const typeClass = log.failure_type === 'global_hourly_limit' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800';
+                const typeText = log.failure_type === 'global_hourly_limit' ? 'Global Limit' : 'Instance Cooldown';
+
+                html += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formattedTime}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                                Instance #${log.instance_id}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-3 py-1 text-sm font-bold rounded-full bg-green-100 text-green-800">
+                                ${log.vote_count} votes
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">${log.proxy_ip || 'N/A'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full ${typeClass}">
+                                ${typeText}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-600 max-w-md truncate" title="${log.cooldown_message || 'No message'}">
+                            ${log.cooldown_message || 'No message'}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        // Auto-refresh hourly limit logs when tab is active
+        setInterval(() => {
+            const limitTab = document.getElementById('hourly-limit-tab');
+            if (limitTab && limitTab.classList.contains('active')) {
+                loadHourlyLimitLogs();
+            }
+        }, 30000); // Refresh every 30 seconds
+
+        // Statistics Tab Functions
+        let statisticsData = null;
+        
+        async function loadStatistics() {
+            try {
+                const response = await fetch(`${API_URL}/api/voting-statistics`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    statisticsData = data.data;
+                    populateStatisticsFilters();
+                    renderStatistics();
+                } else {
+                    console.error('Error loading statistics:', data.message);
+                    document.getElementById('statistics-content').innerHTML = `
+                        <div class="text-center text-red-500 py-8">
+                            <p>Error loading statistics: ${data.message}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error fetching statistics:', error);
+                document.getElementById('statistics-content').innerHTML = `
+                    <div class="text-center text-red-500 py-8">
+                        <p>Error loading statistics. Please try again.</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function populateStatisticsFilters() {
+            if (!statisticsData) return;
+            
+            // Populate instance filter
+            const instanceFilter = document.getElementById('stats-instance-filter');
+            const instances = [...new Set(statisticsData.logs.map(log => log.instance_id))].sort((a, b) => {
+                const numA = parseInt(a.replace('Instance_', ''));
+                const numB = parseInt(b.replace('Instance_', ''));
+                return numA - numB;
+            });
+            
+            instanceFilter.innerHTML = '<option value="all">All Instances</option>';
+            instances.forEach(instance => {
+                const instanceNum = instance.replace('Instance_', '');
+                instanceFilter.innerHTML += `<option value="${instance}">Instance ${instanceNum}</option>`;
+            });
+            
+            // Populate hour filter
+            const hourFilter = document.getElementById('stats-hour-filter');
+            const hours = [...new Set(statisticsData.logs.map(log => {
+                const date = new Date(log.timestamp);
+                return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+            }))].sort().reverse();
+            
+            hourFilter.innerHTML = '<option value="all">All Time</option>';
+            hours.forEach(hour => {
+                const date = new Date(hour);
+                const formatted = date.toLocaleString('en-US', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+                hourFilter.innerHTML += `<option value="${hour}">${formatted}</option>`;
+            });
+        }
+        
+        function renderStatistics() {
+            if (!statisticsData) return;
+            
+            const instanceFilter = document.getElementById('stats-instance-filter').value;
+            const hourFilter = document.getElementById('stats-hour-filter').value;
+            
+            // Filter logs
+            let filtered = statisticsData.logs;
+            
+            if (instanceFilter !== 'all') {
+                filtered = filtered.filter(log => log.instance_id === instanceFilter);
+            }
+            
+            if (hourFilter !== 'all') {
+                filtered = filtered.filter(log => {
+                    const date = new Date(log.timestamp);
+                    const logHour = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+                    return logHour === hourFilter;
+                });
+            }
+            
+            // Calculate statistics
+            const totalRecords = filtered.length;
+            const successfulVotes = filtered.filter(log => log.status === 'success').length;
+            const failedVotes = totalRecords - successfulVotes;
+            const successRate = totalRecords > 0 ? ((successfulVotes / totalRecords) * 100).toFixed(1) : 0;
+            
+            // Group by instance
+            const byInstance = {};
+            filtered.forEach(log => {
+                const instance = log.instance_id.replace('Instance_', '');
+                if (!byInstance[instance]) {
+                    byInstance[instance] = { success: 0, failed: 0, total: 0 };
+                }
+                byInstance[instance].total++;
+                if (log.status === 'success') {
+                    byInstance[instance].success++;
+                } else {
+                    byInstance[instance].failed++;
+                }
+            });
+            
+            // Sort instances numerically
+            const sortedInstances = Object.keys(byInstance).sort((a, b) => parseInt(a) - parseInt(b));
+            
+            // Get recent activity (last 10)
+            const recentActivity = filtered.slice(0, 10);
+            
+            // Render HTML
+            const content = document.getElementById('statistics-content');
+            const filterText = instanceFilter === 'all' ? 'All Instances' : `Instance ${instanceFilter.replace('Instance_', '')}`;
+            const hourText = hourFilter === 'all' ? 'All Time' : hourFilter;
+            
+            let html = `
+                <div class="space-y-6">
+                    <!-- Filter Info -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p class="text-sm font-medium text-blue-900">
+                            Filter: ${filterText} | ${hourText}
+                        </p>
+                        <p class="text-sm text-blue-700 mt-1">
+                            Total Records: ${totalRecords}
+                        </p>
+                    </div>
+                    
+                    <!-- Vote Results -->
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900 mb-3">📊 VOTE RESULTS:</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                                <p class="text-sm text-green-700 font-medium">✅ Successful Votes</p>
+                                <p class="text-3xl font-bold text-green-900 mt-2">${successfulVotes}</p>
+                            </div>
+                            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                                <p class="text-sm text-red-700 font-medium">❌ Failed Votes</p>
+                                <p class="text-3xl font-bold text-red-900 mt-2">${failedVotes}</p>
+                            </div>
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <p class="text-sm text-blue-700 font-medium">📈 Success Rate</p>
+                                <p class="text-3xl font-bold text-blue-900 mt-2">${successRate}%</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- By Instance -->
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900 mb-3">📋 BY INSTANCE:</h3>
+                        <div class="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 font-mono text-sm">
+            `;
+            
+            sortedInstances.forEach(instance => {
+                const stats = byInstance[instance];
+                const rate = ((stats.success / stats.total) * 100).toFixed(1);
+                const rateClass = rate >= 80 ? 'text-green-600' : rate >= 50 ? 'text-yellow-600' : 'text-red-600';
+                html += `
+                    <div class="flex justify-between items-center p-2 bg-white rounded border border-gray-200">
+                        <span class="text-gray-700">Instance ${instance}:</span>
+                        <span class="${rateClass} font-semibold">${stats.success}/${stats.total} (${rate}%)</span>
+                    </div>
+                `;
+            });
+            
+            html += `
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Activity -->
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900 mb-3">🕒 RECENT ACTIVITY:</h3>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <div class="space-y-2 font-mono text-sm">
+            `;
+            
+            recentActivity.forEach(log => {
+                const date = new Date(log.timestamp);
+                const formatted = date.toLocaleString('en-US', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+                const instance = log.instance_id.replace('Instance_', '');
+                const statusIcon = log.status === 'success' ? '✅' : '❌';
+                const statusText = log.status === 'success' ? 'success' : (log.failure_type || 'failed');
+                const statusClass = log.status === 'success' ? 'text-green-600' : 'text-red-600';
+                
+                html += `
+                    <div class="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
+                        <span class="text-gray-600">${formatted}</span>
+                        <span class="text-gray-700">Instance ${instance}</span>
+                        <span class="${statusClass} font-semibold">${statusIcon} ${statusText}</span>
+                    </div>
+                `;
+            });
+            
+            html += `
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            content.innerHTML = html;
+        }
+        
+        // Event listeners for statistics
+        document.getElementById('refresh-statistics-btn').addEventListener('click', loadStatistics);
+        document.getElementById('stats-instance-filter').addEventListener('change', renderStatistics);
+        document.getElementById('stats-hour-filter').addEventListener('change', renderStatistics);
+
+        // Modal event listeners
+        document.getElementById('cancel-login-btn').addEventListener('click', hideSaveLoginModal);
+        document.getElementById('complete-login-btn').addEventListener('click', completeLogin);
+    </script>
+</body>
+</html>
