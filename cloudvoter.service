@@ -1,0 +1,54 @@
+# CloudVoter Backend - Systemd Service File
+# Alternative to PM2 for running the application as a system service
+# 
+# Installation:
+# 1. Copy this file to /etc/systemd/system/cloudvoter.service
+# 2. Update User, WorkingDirectory, and paths below
+# 3. Run: sudo systemctl daemon-reload
+# 4. Run: sudo systemctl enable cloudvoter
+# 5. Run: sudo systemctl start cloudvoter
+
+[Unit]
+Description=CloudVoter Backend - Automated Voting System
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cloudvoter
+Group=cloudvoter
+WorkingDirectory=/home/cloudvoter/YOUR_REPO/backend
+Environment="PATH=/home/cloudvoter/YOUR_REPO/backend/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="FLASK_ENV=production"
+
+# Main application command
+ExecStart=/home/cloudvoter/YOUR_REPO/backend/venv/bin/python3 app.py
+
+# Restart policy - CRITICAL for continuous operation
+Restart=always
+RestartSec=3
+
+# Resource limits
+# Memory limit (restart if exceeded)
+MemoryMax=900M
+MemoryHigh=800M
+
+# CPU limit (90% of one core)
+CPUQuota=90%
+
+# Logging
+StandardOutput=append:/home/cloudvoter/YOUR_REPO/backend/logs/cloudvoter-systemd.log
+StandardError=append:/home/cloudvoter/YOUR_REPO/backend/logs/cloudvoter-systemd-error.log
+
+# Security hardening (optional)
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Process management
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
